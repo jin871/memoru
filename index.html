@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>神経衰弱 (AI・オンライン対戦)</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+
+    <style>
+        /* 基本スタイル */
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: #f4f7f9;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            color: #333;
+        }
+
+        /* 各画面のコンテナ */
+        .screen {
+            display: none; /* 初期状態では非表示 */
+            width: 100%;
+            max-width: 500px;
+            background-color: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .screen.active {
+            display: block; /* .activeクラスで表示 */
+        }
+
+        h1, h2 {
+            color: #2c3e50;
+        }
+
+        /* 入力フィールドとボタン */
+        input[type="text"], input[type="number"] {
+            width: calc(100% - 20px);
+            padding: 12px 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 12px 25px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            background-color: #2ecc71;
+            color: white;
+            transition: background-color 0.3s;
+            margin: 5px;
+        }
+
+        button:hover {
+            background-color: #27ae60;
+        }
+        
+        #create-room-btn {
+             background-color: #3498db;
+        }
+        #create-room-btn:hover {
+            background-color: #2980b9;
+        }
+
+        /* ゲーム画面 */
+        #game-info {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+
+        .player-info {
+            padding: 10px;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .player-info.current-turn {
+            background-color: #f1c40f;
+            color: #fff;
+            transform: scale(1.1);
+            box-shadow: 0 4px 15px rgba(241, 196, 15, 0.4);
+        }
+        
+        #room-id-display {
+            background: #ecf0f1;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 16px;
+            color: #7f8c8d;
+        }
+        
+        #room-id-display .label {
+            font-weight: normal;
+        }
+
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin: 20px auto;
+            perspective: 1000px;
+            max-width: 450px;
+        }
+
+        .card {
+            width: 100%;
+            aspect-ratio: 2 / 3;
+            position: relative;
+            cursor: pointer;
+            transform-style: preserve-3d;
+            transition: transform 0.6s ease-in-out;
+        }
+
+        .card.flipped {
+            transform: rotateY(180deg) scale(1.05);
+        }
+
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5em;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        @media (max-width: 480px) {
+            .card-face { font-size: 1.8em; }
+        }
+
+        .card-front {
+            background-color: #ffffff;
+            color: #333;
+            transform: rotateY(180deg);
+        }
+
+        .card-back {
+            background-color: #4a90e2;
+            color: white;
+            border: 3px solid white;
+        }
+
+        .card-back::after {
+            content: '♦';
+        }
+        
+        .card.matched {
+            transform: rotateY(180deg) scale(1);
+            opacity: 0.4;
+            cursor: default;
+        }
+        
+        #game-status {
+            margin-top: 15px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #e74c3c;
+        }
+
+        .game-controls button {
+            background-color: #95a5a6;
+        }
+        .game-controls button:hover {
+            background-color: #7f8c8d;
+        }
+        #reset-game-btn {
+            background-color: #2ecc71 !important;
+        }
+        #reset-game-btn:hover {
+             background-color: #27ae60 !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="login-screen" class="screen active">
+        <h1>神経衰弱</h1>
+        <input type="text" id="player-name-input" placeholder="プレイヤー名を入力" value="あなた">
+        <button id="set-name-btn">決定</button>
+    </div>
+
+    <div id="lobby-screen" class="screen">
+        <h2 id="welcome-message"></h2>
+        <button id="ai-play-btn">ひとりでプレイ (AI対戦)</button>
+        <hr style="margin: 20px 0; border: 1px solid #eee;">
+        <p>または、友達とプレイ:</p>
+        <button id="create-room-btn">ルームを作成</button>
+        <input type="number" id="room-id-input" placeholder="6桁のルームIDを入力">
+        <button id="join-room-btn">ルームに参加</button>
+    </div>
+
+    <div id="game-screen" class="screen">
+        <div id="game-info">
+            <div id="player1-info" class="player-info"></div>
+            <div id="room-id-display"></div>
+            <div id="player2-info" class="player-info"></div>
+        </div>
+        <div id="game-board"></div>
+        <div id="game-status"></div>
+        <div class="game-controls">
+            <button id="reset-game-btn" style="display:none;">もう一度プレイ</button>
+            <button id="back-to-lobby-btn">ロビーに戻る</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getDatabase, ref, set, get, onValue, off, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA0D7fOnIvQFU3O29q6bb_6gj5tWN23N0s",
+            authDomain: "memory-game-10e98.firebaseapp.com",
+            databaseURL: "https://memory-game-10e98-default-rtdb.firebaseio.com",
+            projectId: "memory-game-10e98",
+            storageBucket: "memory-game-10e98.firebasestorage.app",
+            messagingSenderId: "435852264433",
+            appId: "1:435852264433:web:0ef957830b634b9eb13a50",
+            measurementId: "G-8GN7P9PFX7"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const auth = getAuth(app);
+
+        const loginScreen = document.getElementById('login-screen');
+        const lobbyScreen = document.getElementById('lobby-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const gameBoard = document.getElementById('game-board');
+
+        let currentPlayer = { uid: null, name: '' };
+        let isAiGame = false;
+        
+        // Multiplayer variables
+        let currentRoomId = null;
+        let roomRef = null;
+        let roomListener = null;
+
+        // AI variables
+        let localGameData = null;
+        let aiTurnTimeout = null;
+        let aiMemory = {};
+
+        // --- Sound ---
+        let flipSynth;
+        async function setupAudio() {
+            if (typeof Tone === 'undefined') return;
+            if (Tone.context.state !== 'running') await Tone.start();
+            if (!flipSynth) {
+                flipSynth = new Tone.Synth({
+                    oscillator: { type: 'sine' },
+                    envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 0.1 }
+                }).toDestination();
+            }
+        }
+        document.body.addEventListener('click', setupAudio, { once: true });
+        function playFlipSound() { if (flipSynth) flipSynth.triggerAttackRelease("C5", "16n"); }
+
+        // --- Auth & UI ---
+        signInAnonymously(auth).catch(error => console.error("Auth Error:", error));
+        onAuthStateChanged(auth, user => { if (user) currentPlayer.uid = user.uid; });
+        
+        function switchScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        document.getElementById('set-name-btn').addEventListener('click', () => {
+            const name = document.getElementById('player-name-input').value.trim();
+            if (name && currentPlayer.uid) {
+                currentPlayer.name = name;
+                document.getElementById('welcome-message').textContent = `ようこそ、${name} さん！`;
+                switchScreen('lobby-screen');
+            } else {
+                alert('プレイヤー名を入力してください。');
+            }
+        });
+
+        // --- Game Mode Selection ---
+        document.getElementById('ai-play-btn').addEventListener('click', startAiGame);
+        document.getElementById('create-room-btn').addEventListener('click', createMultiplayerRoom);
+        document.getElementById('join-room-btn').addEventListener('click', joinMultiplayerRoom);
+
+        // --- AI Game Logic ---
+        function startAiGame() {
+            isAiGame = true;
+            aiMemory = {};
+            const symbols = ['1', '1', '2', '2', '3', '3', '4', '4', '5', '5', '6', '6', '7', '7', '8', '8'];
+            shuffleArray(symbols);
+            localGameData = {
+                players: {
+                    [currentPlayer.uid]: { name: currentPlayer.name, score: 0 },
+                    'ai': { name: 'AI', score: 0 }
+                },
+                gameState: {
+                    hostUid: currentPlayer.uid, // Player is always host vs AI
+                    board: symbols,
+                    flippedIndices: [],
+                    matchedIndices: [],
+                    currentPlayerId: currentPlayer.uid,
+                    status: 'playing',
+                    winner: null
+                }
+            };
+            switchScreen('game-screen');
+            createBoardView(localGameData);
+            updateGameView(localGameData);
+        }
+
+        // --- Multiplayer Game Logic ---
+        async function createMultiplayerRoom() {
+            isAiGame = false;
+            currentRoomId = Math.floor(100000 + Math.random() * 900000).toString();
+            roomRef = ref(db, 'rooms/' + currentRoomId);
+            const symbols = ['1', '1', '2', '2', '3', '3', '4', '4', '5', '5', '6', '6', '7', '7', '8', '8'];
+            shuffleArray(symbols);
+            const newRoom = {
+                players: { [currentPlayer.uid]: { name: currentPlayer.name, score: 0 } },
+                gameState: {
+                    hostUid: currentPlayer.uid, 
+                    board: symbols,
+                    flippedIndices: [],
+                    matchedIndices: [],
+                    currentPlayerId: currentPlayer.uid,
+                    status: 'waiting',
+                    winner: null
+                }
+            };
+            await set(roomRef, newRoom);
+            joinRoom(currentRoomId);
+        }
+
+        async function joinMultiplayerRoom() {
+            isAiGame = false;
+            const roomId = document.getElementById('room-id-input').value;
+            if (!roomId || roomId.length !== 6) return alert('6桁のルームIDを入力してください。');
+            const roomToJoinRef = ref(db, 'rooms/' + roomId);
+            const snapshot = await get(roomToJoinRef);
+            if (!snapshot.exists()) return alert('ルームが見つかりません。');
+            const roomData = snapshot.val();
+            if (Object.keys(roomData.players).length >= 2) return alert('このルームは満員です。');
+            const updates = {};
+            updates[`/players/${currentPlayer.uid}`] = { name: currentPlayer.name, score: 0 };
+            updates[`/gameState/status`] = 'playing';
+            await update(roomToJoinRef, updates);
+            joinRoom(roomId);
+        }
+        
+        function joinRoom(roomId) {
+            currentRoomId = roomId;
+            roomRef = ref(db, 'rooms/' + currentRoomId);
+            switchScreen('game-screen');
+            if (roomListener) off(roomRef, 'value', roomListener);
+            roomListener = onValue(roomRef, (snapshot) => {
+                if(snapshot.exists()){
+                    const roomData = snapshot.val();
+                    if (!gameBoard.hasChildNodes()) {
+                        createBoardView(roomData);
+                    }
+                    updateGameView(roomData);
+                } else {
+                    alert("ルームが削除されました。ロビーに戻ります。");
+                    leaveRoom();
+                }
+            });
+        }
+        
+        function leaveRoom() {
+            if (!isAiGame && roomListener && roomRef) off(roomRef, 'value', roomListener);
+            clearTimeout(aiTurnTimeout);
+            isAiGame = false;
+            localGameData = null;
+            currentRoomId = null;
+            roomRef = null;
+            roomListener = null;
+            switchScreen('lobby-screen');
+        }
+
+        // --- View Rendering ---
+        function createBoardView(data) {
+            gameBoard.innerHTML = '';
+            data.gameState.board.forEach((symbol, index) => {
+                const card = document.createElement('div');
+                card.classList.add('card');
+                card.dataset.index = index;
+                card.innerHTML = `<div class="card-face card-front">${symbol}</div><div class="card-face card-back"></div>`;
+                card.addEventListener('click', () => handleCardClick(index));
+                gameBoard.appendChild(card);
+            });
+        }
+
+        function updateGameView(data) {
+            if (!data || !data.players || !data.gameState) return;
+            const { players, gameState } = data;
+            
+            const flippedIndices = gameState.flippedIndices || [];
+            const matchedIndices = gameState.matchedIndices || [];
+
+            const hostUid = gameState.hostUid;
+            const playerIds = Object.keys(players);
+            const otherPlayerId = playerIds.find(id => id !== hostUid);
+
+            const player1Info = document.getElementById('player1-info');
+            const player2Info = document.getElementById('player2-info');
+            
+            player1Info.textContent = '';
+            player1Info.classList.remove('current-turn');
+            player2Info.textContent = '待機中...';
+            player2Info.classList.remove('current-turn');
+
+            if (hostUid && players[hostUid]) {
+                player1Info.textContent = `${players[hostUid].name}: ${players[hostUid].score || 0}`;
+                player1Info.classList.toggle('current-turn', gameState.currentPlayerId === hostUid);
+            }
+            if (otherPlayerId && players[otherPlayerId]) {
+                player2Info.textContent = `${players[otherPlayerId].name}: ${players[otherPlayerId].score || 0}`;
+                player2Info.classList.toggle('current-turn', gameState.currentPlayerId === otherPlayerId);
+            }
+            
+            document.getElementById('room-id-display').textContent = isAiGame ? 'AI 対戦' : `ID: ${currentRoomId}`;
+
+            gameState.board.forEach((_, index) => {
+                const cardElement = gameBoard.querySelector(`[data-index='${index}']`);
+                if (cardElement) {
+                    const isFlipped = flippedIndices.includes(index) || matchedIndices.includes(index);
+                    const isMatched = matchedIndices.includes(index);
+                    cardElement.classList.toggle('flipped', isFlipped);
+                    cardElement.classList.toggle('matched', isMatched);
+                }
+            });
+            
+            const gameStatusEl = document.getElementById('game-status');
+            const resetBtn = document.getElementById('reset-game-btn');
+            resetBtn.style.display = 'none';
+
+            if (gameState.status === 'finished') {
+                const winnerId = gameState.winner;
+                gameStatusEl.textContent = winnerId ? `${players[winnerId].name}の勝利！` : '引き分け！';
+                resetBtn.style.display = 'inline-block';
+            } else {
+                const currentTurnPlayer = players[gameState.currentPlayerId];
+                if (currentTurnPlayer) {
+                    gameStatusEl.textContent = `${currentTurnPlayer.name}のターン...`;
+                }
+            }
+        }
+        
+        // --- Core Game Logic ---
+        function handleCardClick(index) {
+            playFlipSound();
+            if (isAiGame) {
+                handleLocalCardClick(index);
+            } else {
+                handleFirebaseCardClick(index);
+            }
+        }
+        
+        function flipCard(index, data) {
+            data.gameState.flippedIndices.push(index);
+        }
+        
+        function aiLearns(indices, data) {
+            const { board } = data.gameState;
+            indices.forEach(index => {
+                const symbol = board[index];
+                if (!aiMemory[symbol]) aiMemory[symbol] = [];
+                if (!aiMemory[symbol].includes(index)) aiMemory[symbol].push(index);
+            });
+        }
+
+        async function checkForMatch() {
+            if (isAiGame) {
+                let { players, gameState } = localGameData;
+                const [index1, index2] = gameState.flippedIndices;
+                aiLearns([index1, index2], localGameData); 
+                const isMatch = gameState.board[index1] === gameState.board[index2];
+                
+                if (isMatch) {
+                    gameState.matchedIndices.push(index1, index2);
+                    players[gameState.currentPlayerId].score++;
+                } else {
+                    // 【修正点】ターン交代のロジックを明確化
+                    if (gameState.currentPlayerId === currentPlayer.uid) {
+                        gameState.currentPlayerId = 'ai';
+                    } else {
+                        gameState.currentPlayerId = currentPlayer.uid;
+                    }
+                }
+                gameState.flippedIndices = [];
+                if (gameState.matchedIndices.length === gameState.board.length) {
+                    gameState.status = 'finished';
+                    const p1Score = players[currentPlayer.uid].score;
+                    const aiScore = players['ai'].score;
+                    if(p1Score > aiScore) gameState.winner = currentPlayer.uid;
+                    else if (aiScore > p1Score) gameState.winner = 'ai';
+                    else gameState.winner = null;
+                }
+                updateGameView(localGameData);
+                if(gameState.status !== 'finished' && gameState.currentPlayerId === 'ai') aiTurn();
+            } else {
+                const snapshot = await get(roomRef);
+                if (!snapshot.exists()) return;
+                let { players, gameState } = snapshot.val();
+                if (!gameState.flippedIndices || gameState.flippedIndices.length < 2) return;
+                const [index1, index2] = gameState.flippedIndices;
+                const updates = {};
+                const isMatch = gameState.board[index1] === gameState.board[index2];
+                
+                if (isMatch) {
+                    updates[`/gameState/matchedIndices`] = [...(gameState.matchedIndices || []), index1, index2];
+                    updates[`/players/${gameState.currentPlayerId}/score`] = (players[gameState.currentPlayerId].score || 0) + 1;
+                } else {
+                    // 【修正点】ターン交代のロジックを明確化
+                    const playerIds = Object.keys(players);
+                    if (playerIds.length > 1) {
+                        const otherPlayerId = playerIds.find(id => id !== gameState.currentPlayerId);
+                        if (otherPlayerId) { // 安全確認
+                           updates[`/gameState/currentPlayerId`] = otherPlayerId;
+                        }
+                    }
+                }
+                updates[`/gameState/flippedIndices`] = [];
+                if ((updates[`/gameState/matchedIndices`] || (gameState.matchedIndices || [])).length === gameState.board.length) {
+                    updates[`/gameState/status`] = 'finished';
+                    let p1Score = players[gameState.hostUid].score || 0;
+                    const otherId = Object.keys(players).find(id => id !== gameState.hostUid);
+                    let p2Score = otherId ? (players[otherId].score || 0) : -1;
+                    if(isMatch && gameState.currentPlayerId === gameState.hostUid) p1Score++;
+                    if(isMatch && otherId && gameState.currentPlayerId === otherId) p2Score++;
+
+                    if (p1Score > p2Score) updates[`/gameState/winner`] = gameState.hostUid;
+                    else if (p2Score > p1Score) updates[`/gameState/winner`] = otherId;
+                    else updates[`/gameState/winner`] = null;
+                }
+                await update(roomRef, updates);
+            }
+        }
+        
+        // --- Click Handlers ---
+        function handleLocalCardClick(index) {
+            const { gameState } = localGameData;
+            if (gameState.currentPlayerId !== currentPlayer.uid || gameState.flippedIndices.length >= 2 ||
+                gameState.flippedIndices.includes(index) || gameState.matchedIndices.includes(index)) {
+                return;
+            }
+            flipCard(index, localGameData);
+            aiLearns([index], localGameData); 
+            updateGameView(localGameData);
+            if (localGameData.gameState.flippedIndices.length === 2) {
+                setTimeout(checkForMatch, 1000);
+            }
+        }
+        
+        async function handleFirebaseCardClick(index) {
+            const snapshot = await get(roomRef);
+            if (!snapshot.exists()) return;
+            const { gameState } = snapshot.val();
+            if (gameState.currentPlayerId !== currentPlayer.uid ||
+                (gameState.flippedIndices && gameState.flippedIndices.length >= 2) ||
+                (gameState.flippedIndices && gameState.flippedIndices.includes(index)) ||
+                (gameState.matchedIndices && gameState.matchedIndices.includes(index))) {
+                return;
+            }
+            const newFlippedIndices = [...(gameState.flippedIndices || []), index];
+            await update(roomRef, { [`/gameState/flippedIndices`]: newFlippedIndices });
+            if (newFlippedIndices.length === 2) {
+                setTimeout(checkForMatch, 1000);
+            }
+        }
+
+        // --- AI Turn Logic ---
+        function aiTurn() {
+            clearTimeout(aiTurnTimeout);
+            aiTurnTimeout = setTimeout(() => {
+                const { gameState } = localGameData;
+                let knownPair = null;
+                for (const symbol in aiMemory) {
+                    if (aiMemory[symbol].length === 2) {
+                        const [index1, index2] = aiMemory[symbol];
+                        if (!gameState.matchedIndices.includes(index1)) {
+                            knownPair = [index1, index2];
+                            break;
+                        }
+                    }
+                }
+                if (knownPair) {
+                    flipCard(knownPair[0], localGameData);
+                    updateGameView(localGameData);
+                    aiTurnTimeout = setTimeout(() => {
+                        flipCard(knownPair[1], localGameData);
+                        updateGameView(localGameData);
+                        setTimeout(checkForMatch, 1000);
+                    }, 800);
+                    return;
+                }
+                let unknownIndices = [];
+                for(let i=0; i<gameState.board.length; i++) {
+                    if(!gameState.matchedIndices.includes(i)) {
+                        const symbol = gameState.board[i];
+                        if(!aiMemory[symbol] || !aiMemory[symbol].includes(i)) {
+                            unknownIndices.push(i);
+                        }
+                    }
+                }
+                let firstCardIndex;
+                if(unknownIndices.length > 0) {
+                    firstCardIndex = unknownIndices[Math.floor(Math.random() * unknownIndices.length)];
+                } else {
+                    let remaining = [];
+                    for(let i=0; i<gameState.board.length; i++) {
+                        if(!gameState.matchedIndices.includes(i)) remaining.push(i);
+                    }
+                    firstCardIndex = remaining[Math.floor(Math.random() * remaining.length)];
+                }
+                flipCard(firstCardIndex, localGameData);
+                aiLearns([firstCardIndex], localGameData);
+                updateGameView(localGameData);
+                aiTurnTimeout = setTimeout(() => {
+                    const firstSymbol = gameState.board[firstCardIndex];
+                    let matchFound = false;
+                    if (aiMemory[firstSymbol] && aiMemory[firstSymbol].length > 1) {
+                         const partnerIndex = aiMemory[firstSymbol].find(i => i !== firstCardIndex);
+                         if (partnerIndex !== undefined && !gameState.matchedIndices.includes(partnerIndex)) {
+                             flipCard(partnerIndex, localGameData);
+                             matchFound = true;
+                         }
+                    }
+                    if (!matchFound) {
+                        unknownIndices = unknownIndices.filter(i => i !== firstCardIndex);
+                        let secondCardIndex;
+                        if(unknownIndices.length > 0) {
+                            secondCardIndex = unknownIndices[Math.floor(Math.random() * unknownIndices.length)];
+                        } else {
+                            let remaining = [];
+                            for(let i=0; i<gameState.board.length; i++) {
+                                if(!gameState.flippedIndices.includes(i) && !gameState.matchedIndices.includes(i)) remaining.push(i);
+                            }
+                            secondCardIndex = remaining[Math.floor(Math.random() * remaining.length)];
+                        }
+                        flipCard(secondCardIndex, localGameData);
+                        aiLearns([secondCardIndex], localGameData);
+                    }
+                    updateGameView(localGameData);
+                    setTimeout(checkForMatch, 1000);
+                }, 1200);
+            }, 1000);
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+        
+        document.getElementById('back-to-lobby-btn').addEventListener('click', leaveRoom);
+        document.getElementById('reset-game-btn').addEventListener('click', () => {
+             if (isAiGame) {
+                startAiGame();
+             } else {
+                (async () => {
+                    const snapshot = await get(roomRef);
+                    if (!snapshot.exists()) return;
+                    let { players, gameState } = snapshot.val();
+                    shuffleArray(gameState.board);
+                    for (let uid in players) { players[uid].score = 0; }
+                    const updates = {
+                        '/gameState/board': gameState.board, '/gameState/flippedIndices': [],
+                        '/gameState/matchedIndices': [], '/gameState/status': 'playing',
+                        '/gameState/winner': null, '/players': players,
+                        '/gameState/currentPlayerId': gameState.hostUid // Host starts
+                    };
+                    await update(roomRef, updates);
+                })();
+             }
+        });
+
+    </script>
+</body>
+</html>
