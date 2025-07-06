@@ -146,7 +146,7 @@
 <body>
     <div id="login-screen" class="screen active">
         <h1>神経衰弱 オンライン対戦</h1>
-        <input type="text" id="player-name-input" placeholder="プレイヤー名を入力" value="あなた">
+        <input type="text" id="player-name-input" placeholder="プレイヤー名を入力" value="">
         <button id="set-name-btn">決定</button>
     </div>
 
@@ -296,6 +296,7 @@
             currentRoomId = null;
             roomRef = null;
             roomListener = null;
+            gameBoard.innerHTML = ''; // ゲームボードをクリア
             switchScreen('lobby-screen');
         }
 
@@ -353,8 +354,10 @@
             } else if (gameState.status === 'waiting') {
                 gameStatusEl.textContent = '2人目の参加者を待っています...';
             } else {
-                 const currentPlayer = gameState.currentPlayerId === player1.uid ? player1 : player2;
-                 gameStatusEl.textContent = `${currentPlayer.name}のターン...`;
+                 const currentPlayer = (player1 && gameState.currentPlayerId === player1.uid) ? player1 : player2;
+                 if (currentPlayer) {
+                    gameStatusEl.textContent = `${currentPlayer.name}のターン...`;
+                 }
             }
         }
         
@@ -394,11 +397,14 @@
 
             if (isMatch) {
                 const playerKey = currentPlayerId === player1.uid ? 'player1' : 'player2';
-                updates[`/${playerKey}/score`] = (data[playerKey].score || 0) + 1;
+                const currentPlayerData = (playerKey === 'player1') ? player1 : player2;
+                updates[`/${playerKey}/score`] = (currentPlayerData.score || 0) + 1;
                 updates['/gameState/matchedIndices'] = [...(gameState.matchedIndices || []), index1, index2];
             } else {
                 // 間違えたらターン交代
-                updates['/gameState/currentPlayerId'] = currentPlayerId === player1.uid ? player2.uid : player1.uid;
+                if (player2) { // 2人目のプレイヤーがいることを確認
+                    updates['/gameState/currentPlayerId'] = currentPlayerId === player1.uid ? player2.uid : player1.uid;
+                }
             }
             updates['/gameState/flippedIndices'] = [];
 
