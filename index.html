@@ -91,6 +91,11 @@
             perspective: 1000px;
             max-width: 450px;
         }
+        /* 【修正点】ボードがロックされた時のスタイル */
+        #game-board.locked {
+            pointer-events: none;
+            opacity: 0.8;
+        }
         .card {
             width: 100%;
             aspect-ratio: 2 / 3;
@@ -242,7 +247,7 @@
             
             const newRoom = {
                 player1: { uid: localPlayer.uid, name: localPlayer.name, score: 0 },
-                player2: null, // プレイヤー2のスロットを空けておく
+                player2: null,
                 gameState: {
                     board: symbols,
                     flippedIndices: [],
@@ -264,7 +269,6 @@
             const roomData = snapshot.val();
             if (roomData.player2) return alert('このルームは満員です。');
             
-            // プレイヤー2として参加し、ゲームを開始状態にする
             const updates = {};
             updates['/player2'] = { uid: localPlayer.uid, name: localPlayer.name, score: 0 };
             updates['/gameState/status'] = 'playing';
@@ -296,7 +300,7 @@
             currentRoomId = null;
             roomRef = null;
             roomListener = null;
-            gameBoard.innerHTML = ''; // ゲームボードをクリア
+            gameBoard.innerHTML = ''; 
             switchScreen('lobby-screen');
         }
 
@@ -319,7 +323,6 @@
             const flippedIndices = gameState.flippedIndices || [];
             const matchedIndices = gameState.matchedIndices || [];
 
-            // プレイヤー情報を表示
             document.getElementById('player1-info').textContent = `${player1.name}: ${player1.score || 0}`;
             document.getElementById('player1-info').classList.toggle('current-turn', gameState.currentPlayerId === player1.uid);
             
@@ -333,7 +336,6 @@
 
             document.getElementById('room-id-display').textContent = `ID: ${currentRoomId}`;
 
-            // カードの状態を更新
             gameState.board.forEach((_, index) => {
                 const cardElement = gameBoard.querySelector(`[data-index='${index}']`);
                 if (cardElement) {
@@ -344,7 +346,11 @@
                 }
             });
             
-            // ゲームステータスを更新
+            // 【修正点】ボードのロック状態を制御
+            const isMyTurn = gameState.currentPlayerId === localPlayer.uid;
+            const isBoardLocked = flippedIndices.length >= 2 || !isMyTurn || gameState.status !== 'playing';
+            gameBoard.classList.toggle('locked', isBoardLocked);
+
             const gameStatusEl = document.getElementById('game-status');
             if (gameState.status === 'finished') {
                 let winnerName = '引き分け！';
@@ -401,14 +407,13 @@
                 updates[`/${playerKey}/score`] = (currentPlayerData.score || 0) + 1;
                 updates['/gameState/matchedIndices'] = [...(gameState.matchedIndices || []), index1, index2];
             } else {
-                // 間違えたらターン交代
-                if (player2) { // 2人目のプレイヤーがいることを確認
-                    updates['/gameState/currentPlayerId'] = currentPlayerId === player1.uid ? player2.uid : player1.uid;
+                // 【修正点】ターン交代のロジックを修正
+                if (player2) { 
+                    updates['/gameState/currentPlayerId'] = (currentPlayerId === player1.uid) ? player2.uid : player1.uid;
                 }
             }
             updates['/gameState/flippedIndices'] = [];
 
-            // ゲーム終了判定
             const newMatchedIndices = updates['/gameState/matchedIndices'] || gameState.matchedIndices || [];
             if (newMatchedIndices.length === gameState.board.length) {
                 updates['/gameState/status'] = 'finished';
