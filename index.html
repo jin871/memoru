@@ -91,7 +91,6 @@
             perspective: 1000px;
             max-width: 450px;
         }
-        /* 【修正点】ボードがロックされた時のスタイル */
         #game-board.locked {
             pointer-events: none;
             opacity: 0.8;
@@ -346,7 +345,6 @@
                 }
             });
             
-            // 【修正点】ボードのロック状態を制御
             const isMyTurn = gameState.currentPlayerId === localPlayer.uid;
             const isBoardLocked = flippedIndices.length >= 2 || !isMyTurn || gameState.status !== 'playing';
             gameBoard.classList.toggle('locked', isBoardLocked);
@@ -402,12 +400,14 @@
             const currentPlayerId = gameState.currentPlayerId;
 
             if (isMatch) {
-                const playerKey = currentPlayerId === player1.uid ? 'player1' : 'player2';
-                const currentPlayerData = (playerKey === 'player1') ? player1 : player2;
-                updates[`/${playerKey}/score`] = (currentPlayerData.score || 0) + 1;
+                // 【修正点】スコア加算のロジックを修正
+                if (currentPlayerId === player1.uid) {
+                    updates['/player1/score'] = (player1.score || 0) + 1;
+                } else if (player2 && currentPlayerId === player2.uid) {
+                    updates['/player2/score'] = (player2.score || 0) + 1;
+                }
                 updates['/gameState/matchedIndices'] = [...(gameState.matchedIndices || []), index1, index2];
             } else {
-                // 【修正点】ターン交代のロジックを修正
                 if (player2) { 
                     updates['/gameState/currentPlayerId'] = (currentPlayerId === player1.uid) ? player2.uid : player1.uid;
                 }
