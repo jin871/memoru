@@ -244,10 +244,13 @@
             const symbols = ['1', '1', '2', '2', '3', '3', '4', '4', '5', '5', '6', '6', '7', '7', '8', '8'];
             shuffleArray(symbols);
             
+            // 【簡略化】プレイヤーをUIDで管理するシンプルな構造に変更
             const newRoom = {
-                player1: { uid: localPlayer.uid, name: localPlayer.name, score: 0 },
-                player2: null,
+                players: {
+                    [localPlayer.uid]: { name: localPlayer.name, score: 0 }
+                },
                 gameState: {
+                    hostUid: localPlayer.uid, // 部屋を作った人をホストとして記録
                     board: symbols,
                     flippedIndices: [],
                     matchedIndices: [],
@@ -266,10 +269,11 @@
             const snapshot = await get(roomToJoinRef);
             if (!snapshot.exists()) return alert('ルームが見つかりません。');
             const roomData = snapshot.val();
-            if (roomData.player2) return alert('このルームは満員です。');
+            if (Object.keys(roomData.players).length >= 2) return alert('このルームは満員です。');
             
+            // 【簡略化】新しいプレイヤーをplayersオブジェクトに追加
             const updates = {};
-            updates['/player2'] = { uid: localPlayer.uid, name: localPlayer.name, score: 0 };
+            updates[`/players/${localPlayer.uid}`] = { name: localPlayer.name, score: 0 };
             updates['/gameState/status'] = 'playing';
             await update(roomToJoinRef, updates);
 
@@ -316,21 +320,30 @@
         }
 
         function updateGameView(data) {
-            if (!data || !data.gameState) return;
-            const { player1, player2, gameState } = data;
+            if (!data || !data.gameState || !data.players) return;
+            const { players, gameState } = data;
             
             const flippedIndices = gameState.flippedIndices || [];
             const matchedIndices = gameState.matchedIndices || [];
 
-            document.getElementById('player1-info').textContent = `${player1.name}: ${player1.score || 0}`;
-            document.getElementById('player1-info').classList.toggle('current-turn', gameState.currentPlayerId === player1.uid);
+            // 【簡略化】ホストとゲストを明確に分けて表示
+            const hostId = gameState.hostUid;
+            const guestId = Object.keys(players).find(id => id !== hostId);
+
+            const player1Info = document.getElementById('player1-info');
+            const player2Info = document.getElementById('player2-info');
+
+            if (players[hostId]) {
+                player1Info.textContent = `${players[hostId].name}: ${players[hostId].score || 0}`;
+                player1Info.classList.toggle('current-turn', gameState.currentPlayerId === hostId);
+            }
             
-            if (player2) {
-                document.getElementById('player2-info').textContent = `${player2.name}: ${player2.score || 0}`;
-                document.getElementById('player2-info').classList.toggle('current-turn', gameState.currentPlayerId === player2.uid);
+            if (guestId && players[guestId]) {
+                player2Info.textContent = `${players[guestId].name}: ${players[guestId].score || 0}`;
+                player2Info.classList.toggle('current-turn', gameState.currentPlayerId === guestId);
             } else {
-                document.getElementById('player2-info').textContent = '待機中...';
-                document.getElementById('player2-info').classList.remove('current-turn');
+                player2Info.textContent = '待機中...';
+                player2Info.classList.remove('current-turn');
             }
 
             document.getElementById('room-id-display').textContent = `ID: ${currentRoomId}`;
@@ -351,16 +364,18 @@
 
             const gameStatusEl = document.getElementById('game-status');
             if (gameState.status === 'finished') {
+                const hostScore = players[hostId].score || 0;
+                const guestScore = guestId ? (players[guestId].score || 0) : -1;
                 let winnerName = '引き分け！';
-                if(player1.score > (player2 ? player2.score : -1)) winnerName = `${player1.name}の勝利！`;
-                if(player2 && player2.score > player1.score) winnerName = `${player2.name}の勝利！`;
+                if(hostScore > guestScore) winnerName = `${players[hostId].name}の勝利！`;
+                if(guestScore > hostScore) winnerName = `${players[guestId].name}の勝利！`;
                 gameStatusEl.textContent = winnerName;
             } else if (gameState.status === 'waiting') {
                 gameStatusEl.textContent = '2人目の参加者を待っています...';
             } else {
-                 const currentPlayer = (player1 && gameState.currentPlayerId === player1.uid) ? player1 : player2;
-                 if (currentPlayer) {
-                    gameStatusEl.textContent = `${currentPlayer.name}のターン...`;
+                 const currentPlayerName = players[gameState.currentPlayerId]?.name;
+                 if (currentPlayerName) {
+                    gameStatusEl.textContent = `${currentPlayerName}のターン...`;
                  }
             }
         }
@@ -391,7 +406,7 @@
         async function checkForMatch() {
             const snapshot = await get(roomRef);
             if (!snapshot.exists()) return;
-            let { player1, player2, gameState } = snapshot.val();
+            let { players, gameState } = snapshot.val();
             if (!gameState.flippedIndices || gameState.flippedIndices.length < 2) return;
             
             const [index1, index2] = gameState.flippedIndices;
@@ -400,16 +415,16 @@
             const currentPlayerId = gameState.currentPlayerId;
 
             if (isMatch) {
-                // 【修正点】スコア加算のロジックを修正
-                if (currentPlayerId === player1.uid) {
-                    updates['/player1/score'] = (player1.score || 0) + 1;
-                } else if (player2 && currentPlayerId === player2.uid) {
-                    updates['/player2/score'] = (player2.score || 0) + 1;
-                }
+                // 【簡略化】スコア加算のロジックを修正
+                const currentScore = players[currentPlayerId].score || 0;
+                updates[`/players/${currentPlayerId}/score`] = currentScore + 1;
                 updates['/gameState/matchedIndices'] = [...(gameState.matchedIndices || []), index1, index2];
             } else {
-                if (player2) { 
-                    updates['/gameState/currentPlayerId'] = (currentPlayerId === player1.uid) ? player2.uid : player1.uid;
+                // 【簡略化】ターン交代のロジックを修正
+                const playerIds = Object.keys(players);
+                if (playerIds.length > 1) {
+                    const otherPlayerId = playerIds.find(id => id !== currentPlayerId);
+                    updates['/gameState/currentPlayerId'] = otherPlayerId;
                 }
             }
             updates['/gameState/flippedIndices'] = [];
