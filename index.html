@@ -244,13 +244,12 @@
             const symbols = ['1', '1', '2', '2', '3', '3', '4', '4', '5', '5', '6', '6', '7', '7', '8', '8'];
             shuffleArray(symbols);
             
-            // 【簡略化】プレイヤーをUIDで管理するシンプルな構造に変更
             const newRoom = {
                 players: {
                     [localPlayer.uid]: { name: localPlayer.name, score: 0 }
                 },
                 gameState: {
-                    hostUid: localPlayer.uid, // 部屋を作った人をホストとして記録
+                    hostUid: localPlayer.uid,
                     board: symbols,
                     flippedIndices: [],
                     matchedIndices: [],
@@ -271,7 +270,6 @@
             const roomData = snapshot.val();
             if (Object.keys(roomData.players).length >= 2) return alert('このルームは満員です。');
             
-            // 【簡略化】新しいプレイヤーをplayersオブジェクトに追加
             const updates = {};
             updates[`/players/${localPlayer.uid}`] = { name: localPlayer.name, score: 0 };
             updates['/gameState/status'] = 'playing';
@@ -326,7 +324,6 @@
             const flippedIndices = gameState.flippedIndices || [];
             const matchedIndices = gameState.matchedIndices || [];
 
-            // 【簡略化】ホストとゲストを明確に分けて表示
             const hostId = gameState.hostUid;
             const guestId = Object.keys(players).find(id => id !== hostId);
 
@@ -364,8 +361,8 @@
 
             const gameStatusEl = document.getElementById('game-status');
             if (gameState.status === 'finished') {
-                const hostScore = players[hostId].score || 0;
-                const guestScore = guestId ? (players[guestId].score || 0) : -1;
+                const hostScore = players[hostId]?.score || 0;
+                const guestScore = guestId ? (players[guestId]?.score || 0) : -1;
                 let winnerName = '引き分け！';
                 if(hostScore > guestScore) winnerName = `${players[hostId].name}の勝利！`;
                 if(guestScore > hostScore) winnerName = `${players[guestId].name}の勝利！`;
@@ -373,9 +370,10 @@
             } else if (gameState.status === 'waiting') {
                 gameStatusEl.textContent = '2人目の参加者を待っています...';
             } else {
-                 const currentPlayerName = players[gameState.currentPlayerId]?.name;
-                 if (currentPlayerName) {
-                    gameStatusEl.textContent = `${currentPlayerName}のターン...`;
+                // 【修正点】安全にプレイヤー名を取得する
+                 const currentPlayerObject = players[gameState.currentPlayerId];
+                 if (currentPlayerObject) {
+                    gameStatusEl.textContent = `${currentPlayerObject.name}のターン...`;
                  }
             }
         }
@@ -415,16 +413,16 @@
             const currentPlayerId = gameState.currentPlayerId;
 
             if (isMatch) {
-                // 【簡略化】スコア加算のロジックを修正
-                const currentScore = players[currentPlayerId].score || 0;
+                const currentScore = players[currentPlayerId]?.score || 0;
                 updates[`/players/${currentPlayerId}/score`] = currentScore + 1;
                 updates['/gameState/matchedIndices'] = [...(gameState.matchedIndices || []), index1, index2];
             } else {
-                // 【簡略化】ターン交代のロジックを修正
                 const playerIds = Object.keys(players);
                 if (playerIds.length > 1) {
                     const otherPlayerId = playerIds.find(id => id !== currentPlayerId);
-                    updates['/gameState/currentPlayerId'] = otherPlayerId;
+                    if (otherPlayerId) { // 安全確認
+                        updates['/gameState/currentPlayerId'] = otherPlayerId;
+                    }
                 }
             }
             updates['/gameState/flippedIndices'] = [];
